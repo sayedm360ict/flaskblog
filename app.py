@@ -1,5 +1,8 @@
 import sqlite3
-from flask import Flask, render_template, request, url_for, flash, redirect
+from flask import Flask, render_template, request, url_for, flash, redirect,session
+from authlib.integrations.flask_client import OAuth
+from authlib.common.security import generate_token
+import os
 from werkzeug.exceptions import abort
 
 def get_db_connection():
@@ -18,7 +21,12 @@ def get_post(post_id):
 
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your secret key'
+app.secret_key = os.urandom(12)
+
+
+
+
+oauth = OAuth(app)
 
 
 @app.route('/<int:post_id>')
@@ -79,6 +87,40 @@ def delete(id):
     return redirect(url_for('index'))
 
 
+@app.route('/login')
+def login():
+    return render_template('Login.html')
+
+@app.route('/google/')
+def google():
+
+    GOOGLE_CLIENT_ID = '467225328304-vemc1sg8e0mc1su9m9eg7f830og1dkui.apps.googleusercontent.com'
+    GOOGLE_CLIENT_SECRET = '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'
+
+    CONF_URL = 'https://accounts.google.com/.well-known/openid-configuration'
+    oauth.register(
+        name='google',
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        server_metadata_url=CONF_URL,
+        client_kwargs={
+            'scope': 'openid email profile'
+        }
+    )
+
+    # Redirect to google_auth function
+    redirect_uri = url_for('google_auth', _external=True)
+    print(redirect_uri)
+    session['nonce'] = generate_token()
+    return oauth.google.authorize_redirect(redirect_uri,nonce=session['nonce'])
+
+@app.route('/google/auth/')
+def google_auth():
+    token = oauth.google.authorize_access_token()
+    user = oauth.google.parse_id_token(token,nonce=session['nonce'])
+    session['user'] = user
+    print(" Google User ", user)
+    return redirect('/')
 
 
 @app.route('/')
@@ -87,3 +129,10 @@ def index():
     posts = conn.execute('SELECT * FROM posts').fetchall()
     conn.close()
     return render_template('index.html', posts=posts)
+
+
+def create_app():
+   return app
+
+if __name__=='__main__':
+    app.run(debug=True)
